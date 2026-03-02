@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Renova Lotes — Dashboard</title>
+  <title>Conceito.41 — Dashboard</title>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -564,7 +564,7 @@
           </svg>
         </div>
         <div class="title">
-          <h1>Renova Lotes</h1>
+          <h1>Conceito41</h1>
           <p>Controle de lotes, estoque, vendas e indicadores. Tudo salvo no seu navegador.</p>
         </div>
       </div>
@@ -1189,9 +1189,9 @@
     // ===========================
     // STORAGE (v6) + LIXEIRA
     // ===========================
-    const STORAGE_KEY = "renova_lotes_html_v6";
-    const TRASH_KEY   = "renova_lotes_html_v6_trash";
-    const CONFIG_KEY  = "renova_lotes_html_v6_config";
+    const STORAGE_KEY = "Conceito.41_html_v6";
+    const TRASH_KEY   = "Conceito.41_html_v6_trash";
+    const CONFIG_KEY  = "Conceito.41_html_v6_config";
 
     const DEFAULT_TOTAL_LOTE_1 = 6050;
 
@@ -1217,7 +1217,7 @@
     let db = null;
     let firebaseInitialized = false;
     const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyCJPM1NjuAbjUDY0pLbCvUOqYkURLBFuHM",
+      apiKey: "",
       authDomain: "renova-lotes.firebaseapp.com",
       databaseURL: "https://renova-lotes-default-rtdb.firebaseio.com",
       projectId: "renova-lotes",
@@ -2642,7 +2642,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "renova-lotes-backup-" + new Date().toISOString().slice(0,10) + ".json";
+      a.download = "Conceito.41-backup-" + new Date().toISOString().slice(0,10) + ".json";
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -2686,7 +2686,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "renova-lotes-" + new Date().toISOString().slice(0,10) + ".csv";
+      a.download = "Conceito.41-" + new Date().toISOString().slice(0,10) + ".csv";
       document.body.appendChild(a);
       a.click();
       a.remove();
