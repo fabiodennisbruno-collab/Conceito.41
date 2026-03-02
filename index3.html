@@ -586,6 +586,8 @@
           <input id="importFile" type="file" accept="application/json" style="display:none;">
         </label>
 
+        <button class="btn danger" id="clearAllBtn" type="button" title="Limpa localStorage e Firebase">🗑️ Limpar Tudo</button>
+
         <button class="btn primary" id="newBtn" type="button">Novo item</button>
       </div>
     </div>
@@ -1215,13 +1217,14 @@
     let db = null;
     let firebaseInitialized = false;
     const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyB3O2HOESINf6ZKYIT62adDObCD915YrxA",
-      authDomain: "renova-lotes-4e78a.firebaseapp.com",
-      projectId: "renova-lotes-4e78a",
-      storageBucket: "renova-lotes-4e78a.firebasestorage.app",
-      messagingSenderId: "1029277522660",
-      appId: "1:1029277522660:web:5fa5fc1fe0f5da3a966af1",
-      measurementId: "G-YLG4DPZ3BT"
+      apiKey: "AIzaSyCJPM1NjuAbjUDY0pLbCvUOqYkURLBFuHM",
+      authDomain: "renova-lotes.firebaseapp.com",
+      databaseURL: "https://renova-lotes-default-rtdb.firebaseio.com",
+      projectId: "renova-lotes",
+      storageBucket: "renova-lotes.firebasestorage.app",
+      messagingSenderId: "661556650031",
+      appId: "1:661556650031:web:5ad1feec5be5c809b326da",
+      measurementId: "G-HKNL8BDM5P"
     };
 
     const $ = (id) => document.getElementById(id);
@@ -1582,21 +1585,37 @@
       items = SEED.map(normalizeItemShape);
     }
     /**
-     * Salva items no localStorage e Firebase
-     * No Firebase, cada item é salvo como documento individual para melhor performance
+     * Salva APENAS o localStorage (não Firebase)
+     * Use saveItem() para salvar item específico no Firebase
      */
     function saveItems(){ 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-      
-      // Salva no Firebase
-      if(firebaseInitialized){
-        // Salva cada item como documento separado para melhor escalabilidade
-        items.forEach(item => {
-          saveToFirestore("items", item.id, item).catch(e => {
-            console.error(`Erro ao salvar item ${item.id} no Firebase:`, e);
-          });
+    }
+
+    /**
+     * Salva UM item específico no Firebase
+     * Use esta função ao criar/editar UM item
+     */
+    function saveItem(item){
+      if(firebaseInitialized && item && item.id){
+        saveToFirestore("items", item.id, item).catch(e => {
+          console.error(`Erro ao salvar item ${item.id} no Firebase:`, e);
         });
       }
+    }
+
+    /**
+     * Salva TODOS os items no Firebase (use com cuidado!)
+     * Apenas para importação ou sincronização inicial
+     */
+    function saveAllItemsToFirebase(){
+      if(!firebaseInitialized) return;
+      console.warn(`⚠️ Salvando ${items.length} items no Firebase...`);
+      items.forEach(item => {
+        saveToFirestore("items", item.id, item).catch(e => {
+          console.error(`Erro ao salvar item ${item.id}:`, e);
+        });
+      });
     }
 
     // ============================
@@ -1606,17 +1625,26 @@
       return lots.find(l=>l.id===id) || lots[0] || { id:"lote-1", nome:"Lote 1", total: DEFAULT_TOTAL_LOTE_1 };
     }
 
-    function recalcLotCosts(loteId){
+    function recalcLotCosts(loteId, skipFirebase = false){
       const lot = getLotById(loteId);
       const inLot = items.filter(i=>i.loteId === loteId);
       const qty = inLot.length;
       const unit = qty ? (safe(lot.total) / qty) : 0;
 
+      const updatedItems = [];
       items = items.map(i=>{
         if(i.loteId !== loteId) return i;
-        return { ...i, custoProduto: unit };
+        const updated = { ...i, custoProduto: unit };
+        updatedItems.push(updated);
+        return updated;
       });
-      saveItems();
+      
+      saveItems(); // localStorage
+      
+      // Salva apenas os items do lote alterado no Firebase (se não for boot)
+      if(!skipFirebase && firebaseInitialized && updatedItems.length > 0){
+        updatedItems.forEach(item => saveItem(item));
+      }
     }
 
     // ============================
@@ -2128,8 +2156,10 @@
       const row = trash[idx];
       if(!row) return;
 
-      items.unshift(normalizeItemShape(row.item));
-      saveItems();
+      const restored = normalizeItemShape(row.item);
+      items.unshift(restored);
+      saveItems(); // localStorage
+      saveItem(restored); // Salva APENAS este item no Firebase
 
       trash.splice(idx, 1);
       saveTrash();
@@ -2143,6 +2173,14 @@
       const row = trash[idx];
       if(!row) return;
       if(!confirm("Excluir definitivamente? Esta ação não pode ser desfeita.")) return;
+      
+      // Deleta do Firebase também
+      if(firebaseInitialized && row.item && row.item.id){
+        deleteFromFirestore("items", row.item.id).catch(e => {
+          console.error("Erro ao deletar item do Firebase:", e);
+        });
+      }
+      
       trash.splice(idx, 1);
       saveTrash();
       render();
@@ -2497,11 +2535,13 @@
     }
 
     function upsert(it){
-      const idx = items.findIndex(x=>x.id===it.id);
-      if(idx>=0) items[idx]=normalizeItemShape(it); else items.unshift(normalizeItemShape(it));
+      const normalized = normalizeItemShape(it);
+      const idx = items.findIndex(x=>x.id===normalized.id);
+      if(idx>=0) items[idx]=normalized; else items.unshift(normalized);
 
-      saveItems();
-      recalcLotCosts(it.loteId);
+      saveItems(); // Salva localStorage
+      saveItem(normalized); // Salva APENAS este item no Firebase
+      recalcLotCosts(normalized.loteId);
       render();
     }
 
@@ -2516,6 +2556,13 @@
 
       items = items.filter(x=>x.id!==editingId);
       saveItems();
+
+      // Deleta o item do Firebase também
+      if(firebaseInitialized){
+        deleteFromFirestore("items", it.id).catch(e => {
+          console.error("Erro ao deletar item do Firebase:", e);
+        });
+      }
 
       recalcLotCosts(it.loteId);
 
@@ -2681,10 +2728,16 @@
             }
 
             saveConfig();
-            saveItems();
+            saveItems(); // Salva localStorage
             saveTrash();
 
-            lots.forEach(l=>recalcLotCosts(l.id));
+            // Salva items no Firebase em batch (apenas na importação)
+            if(firebaseInitialized && confirm("Deseja sincronizar os dados importados com o Firebase?\n\nIsso vai criar/atualizar todos os items no Firebase.")){
+              saveAllItemsToFirebase();
+              lots.forEach(l=>recalcLotCosts(l.id)); // Recalcula e salva no Firebase
+            } else {
+              lots.forEach(l=>recalcLotCosts(l.id, true)); // Recalcula apenas local
+            }
 
             mountDynamicSelectors();
             render();
@@ -2695,7 +2748,7 @@
           if(Array.isArray(parsed)){
             items = parsed.map(normalizeItemShape);
             saveItems();
-            lots.forEach(l=>recalcLotCosts(l.id));
+            lots.forEach(l=>recalcLotCosts(l.id, true)); // Importação simples: só local
             render();
             alert("Importado com sucesso (lista de itens).");
           } else {
@@ -3356,6 +3409,55 @@
     $("exportCsvBtn").addEventListener("click", exportCSV);
     $("importFile").addEventListener("change", (e)=> importJSON(e.target.files?.[0]));
 
+    /**
+     * Limpa TODOS os dados do localStorage e Firebase
+     * Use com cuidado - esta ação não pode ser desfeita!
+     */
+    $("clearAllBtn").addEventListener("click", async function(){
+      if(!confirm("⚠️ ATENÇÃO! Isso vai DELETAR TUDO:\n\n- Todos os produtos\n- Todas as configurações\n- Toda a lixeira\n- Do localStorage E do Firebase\n\nTem certeza?")) return;
+      
+      if(!confirm("Última chance! Realmente deletar TUDO?")) return;
+
+      console.log("🧹 Limpando tudo...");
+
+      // Limpa localStorage
+      localStorage.clear();
+      sessionStorage.clear();
+      console.log("✅ localStorage limpo");
+
+      // Limpa Firebase
+      if(firebaseInitialized && db){
+        try{
+          // Deleta todos os items
+          const itemsSnapshot = await db.collection("items").get();
+          const deletePromises = [];
+          itemsSnapshot.forEach(doc => {
+            deletePromises.push(doc.ref.delete());
+          });
+          await Promise.all(deletePromises);
+          console.log("✅ Items deletados do Firebase ("+deletePromises.length+" itens)");
+
+          // Deleta config
+          await db.collection("configuracoes").doc("config").delete();
+          console.log("✅ Config deletada do Firebase");
+
+          // Deleta lixeira
+          await db.collection("lixeira").doc("trash").delete();
+          console.log("✅ Lixeira deletada do Firebase");
+
+          alert("✅ Tudo limpo!\n\nA página vai recarregar agora.");
+        }catch(e){
+          console.error("Erro ao limpar Firebase:", e);
+          alert("⚠️ Erro ao limpar Firebase. Verifique o console.");
+        }
+      }
+
+      // Recarrega a página
+      setTimeout(() => {
+        window.location.reload(true);
+      }, 500);
+    });
+
     document.addEventListener("click", (e)=>{
       const th = e.target.closest("th.sortable");
       if(!th) return;
@@ -3639,13 +3741,13 @@
     // Carrega do Firebase (assíncrono) e atualiza a interface
     if(firebaseInitialized){
       loadFromFirebaseOnBoot().then(() => {
-        // Recalcula custos após carregar
+        // Recalcula custos após carregar (sem salvar no Firebase)
         const existingLotIds = new Set(lots.map(l=>l.id));
         items = items.map(it=>{
           if(!existingLotIds.has(it.loteId)) return { ...it, loteId: lots[0]?.id || "lote-1" };
           return it;
         });
-        lots.forEach(l=>recalcLotCosts(l.id));
+        lots.forEach(l=>recalcLotCosts(l.id, true)); // true = skip Firebase
         mountDynamicSelectors();
         setMultiSelected("anuncio", []);
         setMultiSelected("venda", []);
@@ -3661,7 +3763,7 @@
       return it;
     });
 
-    lots.forEach(l=>recalcLotCosts(l.id));
+    lots.forEach(l=>recalcLotCosts(l.id, true)); // true = skip Firebase
 
     mountDynamicSelectors();
 
